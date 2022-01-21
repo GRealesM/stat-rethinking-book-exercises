@@ -1,0 +1,269 @@
+---
+title: "Chapter_4_Tobi"
+output: pdf_document
+---
+
+```{r setup}
+library(rethinking)
+```
+
+## Easy questions
+
+E1)
+In the model definition below, which line is the likelihood? 
+yi ∼ Normal(µ, σ) 
+µ ∼ Normal(0, 10)
+σ ∼ Exponential(1)
+
+The first line yi ∼ Normal(µ, σ) is the likelihood.
+
+E2)
+In the model definition just above,  how many parameters are in the posterior distribution?
+
+There are two parameters in the posterior distribution: µ, σ
+
+E3)
+Using the model definition above, write down the appropriate form of Bayes’ theorem that includes the proper likelihood and priors.
+$$Pr(\mu,\sigma|y) = \frac{\prod_i{{\sf Norm}(y_i|\mu,\sigma) {\sf Norm}(\mu|0, 10) {\sf Exp}(\sigma|1)} } {\int \int \prod_i{{\sf Norm}(y_i|\mu,\sigma) {\sf Norm}(\mu|0, 10) {\sf Exp}(\sigma|1)} d\mu d\sigma}$$
+E4)
+In the model definition below, which line is the linear model? 
+yi ∼ Normal(µ, σ)
+µi = α + βxi 
+α ∼ Normal(0, 10) 
+β ∼ Normal(0, 1)
+σ ∼ Exponential(2)
+
+The linear model is the second line µi = α + βxi
+
+E5)
+There are three, $\mu, \sigma, \beta$
+
+## Medium questions
+
+M1) 
+For the model definition below, simulate observed y values from the prior (not the posterior). 
+yi ∼ Normal(µ, σ) 
+µ ∼ Normal(0, 10)
+σ ∼ Exponential(1)
+
+```{r M1}
+# Sample from the two distributions of parameters
+sample_mu <- rnorm( 1e4 , 0 , 10 ) 
+sample_sigma <- rexp(1)
+# Generate a prior distribution by making a normal distribution using sampled parameters
+prior_h <- rnorm( 1e4 , sample_mu , sample_sigma )
+# Plot
+dens( prior_h )
+
+```
+
+M2)
+Translate the model just above into a quap formula.
+
+```{r M2}
+m2.formulas <- alist(
+  height ~ dnorm(mu, sigma),
+  mu ~ dnorm(0, 10),
+  sigma ~ dexp(1)
+)
+
+```
+
+M3) 
+Translate the quap model formula below into a mathematical model definition. 
+y ~ dnorm( mu , sigma ),
+mu <- a + b*x,
+a ~ dnorm( 0 , 10 ),
+b ~ dunif( 0 , 1 ),
+sigma ~ dexp( 1 )
+
+$$
+\begin{align*}
+y_i & \sim \sf{Norm}(\mu, \sigma)\\
+\mu & =  a + b x_i\\
+a & \sim \sf{Norm}(0, 10)\\
+b & \sim \sf{Unif}(0, 1)\\
+\sigma & \sim \sf{Exp}(1)\\
+
+\end{align*}
+$$
+M4)
+A sample of students is measured for height each year for 3 years. After the third year, you want to fit a linear regression predicting height using year as a predictor. Write down the mathematical model definition for this regression, using any variable names and priors you choose. Be prepared to defend your choice of priors.
+
+$$
+\begin{align*}
+y_i & \sim \sf{Norm}(\mu, \sigma)\\
+\mu & =  a + \beta year_i\\
+\alpha & \sim \sf{Norm}(170, 20)\\
+\beta & \sim \sf{LogNorm}(0, 1)\\
+\sigma & \sim \sf{Exp}(1)\\
+
+\end{align*}
+$$
+
+M5)
+Now suppose I remind you that every student got taller each year. Does this information lead you to change your choice of priors? How?
+
+Maybe adjust the $\beta$ prior to have a longer tail i.e.
+
+$$
+\beta \sim \sf{LogNorm}(0, 2)
+$$
+M6)
+Now suppose I tell you that the variance among heights for students of the same age is never more than 64cm. How does this lead you to revise your priors?
+
+See if I can set a hard cap on the variance of heights to be 64cm i.e.
+$$
+\sigma \sim \sf{Unif}(0,8)\\
+$$
+M7)
+Refit model m4.3 from the chapter, but omit the mean weight xbar this time. Compare the new model’s posterior to that of the original model. In particular, look at the covariance among the parameters. What is different? Then compare the posterior predictions of both models.
+
+```{r M7}
+# Load in data
+data("Howell1")
+d <- Howell1
+d2 <- d[ d$age >= 18,]
+
+# Specify and fit model
+m7.formulas <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*weight,
+  a ~ dnorm(178, 20),
+  b ~ dlnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+m7.model <- quap(m7.formulas, data=d2)
+
+# Return results
+print(precis(m7.model))
+print(round(vcov(m7.model),5))
+
+# Plot predictions
+plot(height ~ weight, data =d2,col=rangi2)
+m7.post <- extract.samples(m7.model)
+m7.a_map <- mean(m7.post$a)
+m7.b_map <- mean(m7.post$b)
+curve(m7.a_map + m7.b_map*x, add=TRUE)
+```
+
+The vcoc matrix changes but I'm not sure why. Of course the mean of the intercept, a, changes and as expected the mean of b and sigma do not.
+
+
+M8)
+In the chapter, we used 15 knots with the cherry blossom spline. Increase the number ofknots and observe what happens to the resulting spline. Then adjust also the width of the prior on the weights—change the standard deviation of the prior and watch what happens. What do you think the combination of knot number and the prior on the weights controls?
+
+```{r M8}
+library(splines)
+
+# Load data
+data("cherry_blossoms")
+m8.data <- cherry_blossoms
+m8.d2 <- m8.data[complete.cases(m8.data$doy),]
+
+# Param initialisation
+n.knots <- 20
+n.knots <- 30
+n.knots <- 50
+
+knot.list <- quantile(m8.d2$year,
+                      probs=seq(0,1,                                              length.out=n.knots))
+
+# Basis
+basis <- bs(m8.d2$year,
+            knots=knot.list[-c(1, n.knots)],
+            degree=3,
+            intercept = TRUE) # knot.list[-c(1, n.knots)] drops the first value
+
+# Plot
+plot(NULL, xlim=range(m8.d2$year), ylim=c(0,1), xlab='year',
+     ylab = 'basis')
+for (i in 1:ncol(basis)) lines(m8.d2$year, basis[,i])
+```
+
+## Hard questions
+
+H1)
+The weights listed belowwere recorded in the !Kung census, but heights were not recorded for these individuals. Provide predicted heights and 89% intervals for each of these individuals. That is,
+fill in the table below, using model-based predictions.
+
+```{r H1}
+# I can use the model I already fit in M7 to get predictions for the height and the intervals
+h1.weights <- data.frame(weight=c(46.95, 43.72, 64.78, 32.59, 54.63))
+
+
+# Predict heights for the given weights
+h1.h.pred <- m7.a_map + m7.b_map * h1.weights$weight
+print(h1.h.pred)
+
+# Predict height 89% interval
+sim.h1.height <- sim(m7.model, data=h1.weights)
+str(sim.h1.height)
+h1.h.PI <- apply(sim.h1.height, 2, PI, prob=0.89)
+h1.h.PI
+
+```
+
+
+H2) 
+Select out all the rows in the Howell1 data with ages below 18 years of age. If you do it right, you should end up with a new data frame with 192 rows in it. 
+(a) Fit a linear regression to these data, using quap. Present and interpret the estimates. For
+every 10 units of increase in weight, how much taller does the model predict a child gets? 
+
+```{r H2a}
+# Prepare data and check length == 192
+h2.d <- Howell1[Howell1$age < 18,]
+print(dim(h2.d))
+
+# Prepare and fit model
+h2.formulas <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*weight,
+  a ~ dnorm(80, 20),
+  b ~ dlnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+h2.model <- quap(h2.formulas, data=h2.d)
+
+print(precis(h2.model))
+
+# How much taller does a child get for every 10 units increase in weight
+print(h2.b_map * 10)
+
+```
+
+
+(b) Plot the raw data, with height on the vertical axis and weight on the horizontal axis. Super-
+impose the MAP regression line and 89% interval for the mean. Also superimpose the 89% interval for predicted heights. 
+
+```{r H2b}
+
+# Get MAP estimates for mean
+h2.post <- extract.samples(h2.model)
+h2.a_map <- mean(h2.post$a)
+h2.b_map <- mean(h2.post$b)
+
+# Get 89% interval for mean
+weight.seq <- seq(from=0, to=50, by=1)
+# h2.mu.PI <- apply(h2.mu, 2, PI, prob=0.89)
+
+# Get 89% interval for heights
+sim.h2.height <- sim(h2.model, data=list(weight=weight.seq))
+str(sim.h2.height)
+h2.h.PI <- apply(sim.h2.height, 2, PI, prob=0.89)
+
+
+# Plot predictions
+plot(height ~ weight, data=h2.d, col=rangi2)
+lines(weight.seq,h2.a_map + h2.b_map*h2.d$weight.seq)
+# shade(h2.mu.PI, h2.d$weight)
+shade(h2.h.PI, weight.seq)
+
+```
+
+
+(c) What aspects of the model fit concern you? Describe the kinds of assumptions you would
+change, if any, to improve the model. You don’t have to write any new code. Just explain what the
+model appears to be doing a bad job of, and what you hypothesize would be a better model.
+
+The model fits a straight line to the data when it is clear there is some curvature. Fitting a polynomial of degree 2 or 3 may result in a better fit to the data.

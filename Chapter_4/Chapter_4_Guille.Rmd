@@ -331,7 +331,7 @@ shade(mu_PI, d2$year, col=col.alpha("black", 0.5))
 Let's fit the model with smaller SD around the priors to see what happens
 
 ```{r}
-m4.7 <- quap(
+  m4.7 <- quap(
           alist(
             D ~ dnorm(mu, sigma),
             mu <- a + B %*% w,

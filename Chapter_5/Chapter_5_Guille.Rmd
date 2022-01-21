@@ -1,0 +1,195 @@
+---
+title: "Chapter 5. The many variables & the spurious waffles"
+date: "14/01/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+  pdf_document: default
+---
+
+Here we'll solve the exercises for the chapter.
+
+```{r warning=FALSE, message=FALSE}
+library(rethinking)
+library(magrittr)
+library(dagitty)
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(data.table)
+```
+
+## Easy
+
+### 5E1
+
+Which of the linear models below are multiple linear regressions?
+
+1. $\mu_i = \alpha + \beta x_i$
+2. $\mu_i = \beta_x x_i + \beta_z z_i$
+3. $\mu_i = \alpha + \beta(x_i - z_i) $
+4. $\mu_i = \alpha + \beta_x x_i + \beta_z z_i$
+
+**Answer:** 2 and 4, since they have two predictors with their own slope each.
+
+### 5E2
+
+Write down a multiple linear regression to evaluate the claim: *Animal diversity is linearly related to latitude, but only after controlling for plant diversity*. You just need to write down the model definition.
+
+**Answer:** 
+
+$Y_i = \alpha + \beta_aA_i + \beta_p P_i$
+
+Where $Y_i$ is latitude of each experimental unit, $A_i$ is animal diversity, and $P_i$ is plant diversity. Each $\beta$ correspond to their respective slopes.
+
+
+### 5E3 
+
+Write down a multiple regression to evaluate the claim: *Neither amount of funding nor size of laboratory is by itself a good predictor of time to PhD degree; but together these variable are both positively associated with time to degree*. Write down the model definition and indicate of zero each slope parameter should be on.
+
+**Answer:**
+
+$T_i = \alpha + \beta_fF_i + \beta_s S_i$
+
+Where $T_i$ is time to degree, $F_i$ is funding, and $S_i$ is size of laboratory.
+
+I'm not sure. We saw in the book example that the effect of getting stronger associations when both variables are included results from variables being positively and negatively correlated, but this would result in having stronger but opposing associations, wouldn't it?
+
+In this case both $\beta$ should be positive to comply with the statement, but probably next to zero when fitting the model with the predictors separately.
+
+### 5E4
+
+Suppose you have a single categorical predictor with 4 levels (unique values), labelled A, B, C, and D. Let $A_i$ be an indicator variable that is 1 where case $i$ is in category A. Also suppoise $B_i$, $C_i$, and $D_i$ for the other categories. Now which of the following linear models are inferentially equivalent ways to include the categorical variable in a regression? Models are inferentially equivalent when it's possible to compute one posterior distribution from the posterior distribution of another model.
+
+1. $\mu_i = \alpha + \beta_A A_i + \beta_B B_i + \beta_D D_i$
+2. $\mu_i = \alpha + \beta_A A_i + \beta_B B_i + \beta_C C_i + \beta_D D_i$
+3. $\mu_i = \alpha_A A_i +\alpha_B B_i + \alpha_C C_i + \alpha_D D_i$
+4. $\mu_i = \alpha_A (1 - B_i - C_i - D_i) +\alpha_B B_i + \alpha_C C_i + \alpha_D D_i$
+
+**Answer:** No idea.
+
+### 5M1
+
+Invent your own example of a spurious correlation. An outcome variable should be correlated with both predictor variables. But when both predictors are entered in the same model the correlation between the outcome and one of the predictors should mostly vanish (or at least greatly reduced).
+
+**Answer: ** There are plenty [here](https://www.tylervigen.com/spurious-correlations)
+
+### 5M2 
+
+Invent your own example of a masked relationship. An outcome variable should be correlated with both predictor variables, but in opposite directions. And the two predictor variables should be correlated with one another.
+
+**Answer:** Performance at a given sport, the two predictor variables could be accumulated time of training and age. We would expect physical performance to be positively correlated with time of training but negatively correlated with age. At the same time, age and time of training should be positively correlated, since the older you are, the more time you had available for training and, if you're serious about the sport, you'd use that time to train a lot.
+
+### 5M3 
+
+It's sometimes observed that the best predictor for fire risk is the presence of firefigthers -- States and localities with many firefighters also have more fires. Presumably firefighters do not *cause* fires. Nevertheless, this is not a spurious correlation. Instead fires cause firefighters. Consider the same reversal of cusal inference in the context of the divorce and marriage data. How might a high divorce rate cause a higher marriage rate? Can you think of a way to evaluate this relationship using multiple regression?
+
+**Answer: ** Using marriage rate as the independent variable and putting divorce rate as a predictor?
+
+### 5M4
+
+In the divorce data, States with high numbers of the Church of Jesus Christ of the Latter-day Saints (LDS) have much lower divorce rates than the regression models expected. Find a list of LDS population by state and use those numbers as a predictor variable, predicting divorce rate using marriage rate, median age at marriage, and percent LDS population (possibly standardised). You may want to consider transformations of the raw percent LDS variable.
+
+**Answer:** 
+
+```{r}
+data("WaffleDivorce")
+d <- WaffleDivorce
+
+mor <- read.csv("Mormon.csv")
+names(mor) <- c("State", "MormonPop", "Pop2021")
+d <- merge(d, mor, by.x = "Location", by.y = "State") # 49 States, since Waffle doesn't have Nevada and Mormon doesn't have DC.
+
+# Prepare data for modelling
+d <- data.table(d)
+d[, A:= standardize(MedianAgeMarriage)][, D:=standardize(Divorce)][, M:=standardize(Marriage)][, Mormon_perc:=(MormonPop/Pop2021)*100][, Mormon_perc_log := log(Mormon_perc)][, L:=standardize(Mormon_perc_log)]
+
+m.mor <- quap(
+            alist(
+              D ~ dnorm(mu, sigma),
+              mu <- a + bM*M + bA*A + bL*L,
+              a ~ dnorm(0, 0.2),
+              bM ~ dnorm(0, 0.5),
+              bA ~ dnorm(0, 0.5),
+              bL ~ dnorm(0, 0.5),
+              sigma ~ dexp(1)
+            ), data=d
+)
+
+precis(m.mor)
+
+```
+
+Compared with m5.3 in the book, it looks like proportion of Mormon population in a state has a big effect (-0.30) on divorce rates. Taking that into account, Age still has a large effect (-0.66), even larger than in m5.3 (-0.61). On the other hand, marriage rate continues to have negligible effect.
+
+
+
+### 5M5
+
+One way to reason through multiple causation hypotheses is to imagine detailed mechanisms through which predictor variables may influence outcomes. For example, it is sometimes argued that the price of gasoline (predictor variable) is positively associated with lower obesity rates (outcome variable). However, there are at least two important mechanisms by which the price of gas could reduce obesity. First, it could lead to less driving and therefore more exercise. Second, it could lead to less driving, which leads to less eating out, which leads to less consumption of huge restaurant meals. Can you outline one or more multiple regressions that address these two mechanisms? Assume you cnan have any predictor data you need.
+
+**Answer:** 
+
+$Y_i = \alpha + \beta_G G_i + \beta_S S_i + \beta_R R_i$
+
+Where $Y_i$ is obesity rate, $G_i$ is the price of gasoline, $S_i$ is the average number of steps by individual, and $R_i$ is the average restaurant revenue.
+
+
+### 5H1 
+
+In the divorce example, suppose the DAG is M -> A -> D. What are the implied conditional independencies of the graph? Are the data consistent with it?
+
+**Answer:** 
+
+```{r}
+MAD_dag <- dagitty('dag{ M -> A -> D}')
+impliedConditionalIndependencies(MAD_dag)
+```
+
+This means that Marriage rate does not add any additional information about divorce rate once we condition on median age of marriage.
+
+As we have seen, once we include Age of marriage in the model, marriage rate goes to zero effect, so we could say it's compatible, yes.
+
+
+### 5H2 
+
+Assuming that the DAG for the divorce example is indeed M -> A -> D, fit a new model and use it to estimate the conterfactual effect of halving a State's marriage rate M. Use the conterfactual example from the chapter (starting on page 140) as a template.
+
+**Answer:** 
+
+```{r}
+d <- data.table(WaffleDivorce)
+d[, A:= standardize(MedianAgeMarriage)][, D:=standardize(Divorce)][, M:=standardize(Marriage)]
+
+m.MAD <- quap(
+            alist(
+              # A -> D
+              D ~ dnorm(mu, sigma),
+              mu <- a + bA*A,
+              a ~ dnorm(0, 0.2),
+              bA ~ dnorm(0, 0.5),
+              sigma ~ dexp(1),
+              
+              # M -> A
+              A ~ dnorm(mu_A, sigma_A),
+              mu_A <- aA + bMA*M,
+              aA ~ dnorm(0, 0.2),
+              bMA ~ dnorm(0, 0.5),
+              sigma_A ~ dexp(1)
+            ), data=d
+)
+
+sim_dat <- data.frame(M = (c(d$Marriage, d$Marriage/2)-mean(d$Marriage))/ sd(d$Marriage))
+s <- sim(m.MAD, data=sim_dat, vars=c("A", "D"))
+mean(s$D[, 2] - s$D[, 1])
+
+plot(sim_dat$M, colMeans(s$D), ylim=c(-2,2), type="l", xlab="manipulated M", ylab="conterfactual D")
+shade(apply(s$D, 2, PI), sim_dat$M)
+mtext("Total conterfactual effect of M on D")
+```
+
+
+

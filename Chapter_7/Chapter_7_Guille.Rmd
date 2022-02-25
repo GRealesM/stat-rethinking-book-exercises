@@ -1,0 +1,525 @@
+---
+title: "Chapter 7. The Ulysses' compass"
+date: "23/02/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+  pdf_document: default
+---
+
+Here we'll solve the exercises for the chapter.
+
+```{r warning=FALSE, message=FALSE}
+library(rethinking)
+library(magrittr)
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(data.table)
+```
+
+## Easy
+
+### 7E1
+
+State the three motivating criteria that define information entropy. Try to express each in your own words.
+
+**Answer:** 
+
+1. The measure of uncertainty should be continuous.
+
+2. The measure of uncertainty should increase as the number of possible events increases. The more events we're trying to predict, the more difficult will be to correctly predict them.
+
+3. The measure of uncertainty should be additive, such that the sum of the uncertainties associated to each combination of events should be equal to the sum of the separate uncertainties. It makes no sense that two independent events happening together have more (or less) associated uncertainty than the sum of those events.
+
+
+### 7E2
+
+Suppose a coin is weighted such that, when it is tossed and lands on a table, it comes up heads 70%. What is the entropy of this coin?
+
+**Answer:** 
+
+```{r}
+coin <- c(0.7, 0.3)
+-sum(coin * log(coin))
+```
+
+
+### 7E3
+
+Suppose a four-sided die is loaded such that, when tossed onto a table, it shows "1" 20%, "2" 25%, "3" 25%, and "4" 30% of the time. What is the entropy of this die?
+
+**Answer:** 
+
+```{r}
+die <- c(0.2, 0.25, 0.25, 0.3)
+-sum( die * log(die))
+```
+
+
+
+### 7E4
+
+Suppose that another four-sided die is loaded such that it never shows "4". The other three sides show equally often. What is the entropy of this die?
+
+**Answer:** 
+
+```{r}
+die <- c(0.33, 0.33, 0.33)
+-sum( die * log(die))
+```
+
+In this case the die has lower entropy because the event "4" will never happen, and hence fewer events are possible.
+
+### 7M1
+
+Write down and compare the definitions of AIC and WAIC. Which of these criteria is most general? Which assumptions are required to transform the more general criterion into a less general one?
+
+**Answer:** 
+
+* **AIC**
+
+$ AIC=D_{train}+2p=-2lppd+2p $
+
+* **WAIC**
+
+$ WAIC(y,\theta) = -2(lppd - \sum_i var_{\theta}\ log\ p(y_i|\theta))$
+
+WAIC is more general (ehem, "Widely applicable" ehem) because it does not make any assumptions about the shape of the posterior, while AIC assumes a multivariate Gaussian distribution. If we assume multivariate Gaussian distributions, we can get from the general to the less general criterion (How do we do that, though?).
+
+
+### 7M2
+
+Explain the difference between model selection and model comparison. What information is lost under model selection?
+
+**Answer:** By *model comparison* we mean to evaluate the predictive accuracy of a set of competing models by using information criteria (such as WAIC or PSIS, for example). By *model selection* we do model comparison and select the one with the lowest information criteria, ignoring the rest. By doing this, we lose information about differences in relative accuracy among models, which can provide useful insights about how confident we might be about our models.
+
+
+### 7M3
+
+When comparing models with an information criterion, why must all models be fit to exactly the same observations? What would happen to the information criterion values, if the models were fit to different numbers of observations? Perform some experiments, if you are not sure.
+
+
+**Answer:** We must fit the models to exactly the same observations because otherwise any comparison would be unfair. Model accuracy would be calculated based on different things, making the resulting divergences incomparable. It would be like comparing the performance of two F1 pilots by measuring the time they take to complete a lap in different circuits (eg. Pilot 1 at Interlagos v. Pilot 2 at Imola) with different lengths and characteristics like number of curves, angles, etc.
+
+
+### 7M4
+
+What happens to the effective number of parameters, as measured by PSIC or WAIC, as a prior becomes more concentrated? Why? Perform some experiments, if you are not sure.
+
+**Answer:** The "effective number of parameters" is the overfitting penalty applied when estimating the out-of-sample deviance. As priors become more concentrated (ie. as the become less flat and more skeptical or regularising), we expect the overfitting penalty to decrease, thus improving (reducing) out-of-sample deviance and improving the model score. By using regularising priors, we ensure that the model does not learn too much about the data (ie. it gives lower mass probability to extreme observations in the data), and this will be reflected in lower effective number of parameters.
+
+
+### 7M5
+
+Provide an informal explanation of why informative priors reduce overfitting.
+
+**Answer:** By codifying information we know about the real world into the model via informative priors, we prevent the model to rely too much on particular aspects of the data, hence reducing overfitting. In other words, if we know from experience that certain observations that might be present in the training data are unlikely in the real world, we tell the model not to take those too much into account. If we don't do that, the model might "think" that those observations are more likely that they really are in the real world, resulting in great training data prediction accuracy, but poor performance for real world inference.
+
+### 7M6
+
+Provide an informal explanation of why overly informative priors result in underfitting.
+
+**Answer:** On the other hand, if we are overly confident and provide the model with very narrow priors, the model won't learn enough features of the data, as it will be too skeptical about the variance of the training data that exists in the real world, too, resulting in poor test performance.
+
+
+### 7H1
+
+In 2007, *The Wall Street Journal* published an editorial ("We're number One. Alas") with a graph of corporate tax rates in 29 countries plotted against tax revenue. A badly fit curve was drawn in, seemingly by hand, to make the argument that the relationship between tax rate and tax revenue increases and then declines, such that higher tax rate can actually provide less tax revenue. I want you to actually fit a curve to these data, found in `data(Laffer)`. Consider models hat use tax rate to predict tax revenue. Compare. using WAIC or PSIS, a strait line model to any curved models you like. What do you conclude about the relationship between tax rate and tax revenue?
+
+**Answer:** 
+
+```{r}
+data("Laffer")
+d <- Laffer
+plot(d)
+```
+
+This is the raw data. doesn't really feel like a curve should necessarily be the best to fit it, right? Well, let's see.
+
+```{r}
+
+m.line <- quap(
+          alist(
+            tax_revenue ~ dnorm(mu, sigma),
+            mu <- a + bR * tax_rate,
+            a ~ dnorm(0, 0.2),
+            bR ~ dnorm(0, 0.5),
+            sigma ~ dexp(1)
+          ), data=d
+)
+
+d$tax_rate_s2 <- d$tax_rate^2
+d$tax_rate_s3 <- d$tax_rate^3
+
+m.quad <- quap(
+          alist(
+            tax_revenue ~ dnorm(mu, sigma),
+            mu <- a + bR * tax_rate + bR2 * tax_rate_s2,
+            a ~ dnorm(0, 0.2),
+            bR ~ dnorm(0, 0.5),
+            bR2 ~ dnorm(0, 1),
+            sigma ~ dexp(1)
+          ), data=d
+)
+
+m.cub <- quap(
+          alist(
+            tax_revenue ~ dnorm(mu, sigma),
+            mu <- a + bR * tax_rate + bR2 * tax_rate_s2 + bR3 * tax_rate_s3,
+            a ~ dnorm(0, 0.2),
+            bR ~ dnorm(0, 5),
+            bR2 ~ dnorm(0, 1),
+            bR3 ~ dnorm(0, 1),
+            sigma ~ dexp(1)
+          ), data=d
+)
+
+
+```
+
+Let's take a look at the models:
+
+```{r}
+precis(m.line)
+```
+
+It looks like increasing the tax rate increases the tax revenue, but by little (0.12)
+
+```{r}
+tr.seq <- seq(0, 40, length.out=100)
+pred_dat <- list(tax_rate = tr.seq)
+mu <- link(m.line, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+sim.tre <- sim(m.line, data=pred_dat)
+tre.PI <- apply(sim.tre, 2, PI, prob = 0.89)
+
+
+
+plot(tax_revenue ~ tax_rate, d, col=col.alpha(rangi2, 0.5))
+lines(tr.seq, mu.mean)
+shade(mu.PI, tr.seq)
+#shade( tre.PI, tr.seq)
+```
+
+Now for the other models
+
+
+```{r}
+precis(m.quad)
+```
+
+
+
+```{r}
+tr.seq <- seq(0, 40, length.out=100)
+pred_dat <- list(tax_rate = tr.seq, tax_rate_s2 = tr.seq^2)
+mu <- link(m.quad, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+sim.tre <- sim(m.quad, data=pred_dat)
+tre.PI <- apply(sim.tre, 2, PI, prob = 0.89)
+
+
+plot(tax_revenue ~ tax_rate, d, col=col.alpha(rangi2, 0.5))
+lines(tr.seq, mu.mean)
+shade(mu.PI, tr.seq)
+
+```
+
+```{r}
+precis(m.cub)
+```
+
+Small coefficients, larger sd! Not looking very good?
+
+```{r}
+tr.seq <- seq(0, 40, length.out=100)
+pred_dat <- list(tax_rate = tr.seq, tax_rate_s2 = tr.seq^2, tax_rate_s3 = tr.seq^3)
+mu <- link(m.cub, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+sim.tre <- sim(m.cub, data=pred_dat)
+tre.PI <- apply(sim.tre, 2, PI, prob = 0.89)
+
+
+plot(tax_revenue ~ tax_rate, d, col=col.alpha(rangi2, 0.5))
+lines(tr.seq, mu.mean)
+shade(mu.PI, tr.seq)
+
+```
+
+None of the fitted models seem to match the "manually-fitted" curve in the WSJ article. 
+
+Let's now compare the models to see which is better to predict tax revenue.
+
+```{r}
+set.seed(77)
+compare(m.line, m.quad, m.cub, func = "WAIC")
+```
+
+
+`m.quad` (second degree polynomial, quadratic) seems to be the best model to fit the data, but  by looking at the deviance (dWAIC) and it's SE, there doesn't seem to be significant differences among the models.
+
+```{r}
+compare(m.line, m.quad, m.cub, func = PSIS)
+```
+
+
+PSIS informs us about very high Pareto K values, likely due to the outlier (10 tax_revenue).
+
+
+We can conclude that the relationship between tax rate and tax revenue is slightly positive, and although a curve might be more accurate, it's not significantly better than a straight line.
+
+
+### 7H2
+
+In the `Laffer` data, there is only one country with high tax revenue that is an outlier. Use PSIS and WAIC to measure the importance of this outlier in the models you fit in the previous problem. Then use robust regression with a Student's t distribution to revisit the curve fitting problem. How much does a curved relationship depend upon the outlier point?
+
+**Answer:** 
+
+
+```{r}
+set.seed(77)
+PSIS_m.line <- PSIS(m.line, pointwise = TRUE)
+set.seed(77)
+WAIC_m.line <- WAIC(m.line, pointwise = TRUE)
+plot(PSIS_m.line$k, WAIC_m.line$penalty, xlab = "PSIS Pareto k", ylab="WAIC penalty", col=rangi2, lwd=2)
+```
+
+Indeed, as we observed, there's an obvious outlier.
+
+Let's use robust regression to compare
+
+```{r}
+
+m.line.t <- quap(
+          alist(
+            tax_revenue ~ dstudent(2, mu, sigma),
+            mu <- a + bR * tax_rate,
+            a ~ dnorm(0, 0.2),
+            bR ~ dnorm(0, 0.3),
+            sigma ~ dexp(1)
+          ), data=d
+)
+
+m.quad.t <- quap(
+          alist(
+            tax_revenue ~ dstudent(2, mu, sigma),
+            mu <- a + bR * tax_rate + bR2 * tax_rate_s2,
+            a ~ dnorm(0, 0.2),
+            bR ~ dnorm(0, 0.3),
+            bR2 ~ dnorm(0, 1),
+            sigma ~ dexp(1)
+          ), data=d
+)
+
+m.cub.t <- quap(
+          alist(
+            tax_revenue ~ dstudent(2, mu, sigma),
+            mu <- a + bR * tax_rate + bR2 * tax_rate_s2 + bR3 * tax_rate_s3,
+            a ~ dnorm(0, 0.2),
+            bR ~ dnorm(0, 0.3),
+            bR2 ~ dnorm(0, 1),
+            bR3 ~ dnorm(0, 1),
+            sigma ~ dexp(1)
+          ), data=d
+)
+```
+
+Let's take a peak at the plots
+
+
+```{r}
+
+tr.seq <- seq(0, 40, length.out=100)
+pred_dat <- list(tax_rate = tr.seq)
+mu <- link(m.line, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+sim.tre <- sim(m.line, data=pred_dat)
+tre.PI <- apply(sim.tre, 2, PI, prob = 0.89)
+
+plot(tax_revenue ~ tax_rate, d, col=col.alpha(rangi2, 0.5))
+lines(tr.seq, mu.mean)
+shade(mu.PI, tr.seq)
+
+# quad plot
+pred_dat <- list(tax_rate = tr.seq, tax_rate_s2 = tr.seq^2)
+mu <- link(m.quad, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+sim.tre <- sim(m.quad, data=pred_dat)
+tre.PI <- apply(sim.tre, 2, PI, prob = 0.89)
+
+
+plot(tax_revenue ~ tax_rate, d, col=col.alpha(rangi2, 0.5))
+lines(tr.seq, mu.mean)
+shade(mu.PI, tr.seq)
+
+
+pred_dat <- list(tax_rate = tr.seq, tax_rate_s2 = tr.seq^2, tax_rate_s3 = tr.seq^3)
+mu <- link(m.cub, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+sim.tre <- sim(m.cub, data=pred_dat)
+tre.PI <- apply(sim.tre, 2, PI, prob = 0.89)
+
+
+plot(tax_revenue ~ tax_rate, d, col=col.alpha(rangi2, 0.5))
+lines(tr.seq, mu.mean)
+shade(mu.PI, tr.seq)
+
+```
+
+Compare the models now
+
+```{r}
+set.seed(7)
+compare(m.line.t, m.quad.t, func = "WAIC")
+```
+
+For some reason comparing the third model yielded an error `'Sigma' is not positive definite`. By comparing `m.line.t` and `m.quad.t` we see that, although the m.quad.t is still better, the dSE is as big as dWAIC, so we cannot trust that `m.quad.t` is indeed significantly better.
+
+Let's try PSIS now.
+
+```{r}
+set.seed(77)
+compare(m.line.t, m.quad.t, func = "PSIS")
+```
+
+
+I don't see much difference between the two types of regression, to be honest. Maybe using other approaches, like standardising the predictors, we would see a difference.
+
+### 7H3
+
+Consider three fictional Polynesian islands. On each there is a Royal Ornithologist charged by the king with surveting the bird population. They have found the following proportions of 5 important bird species (see book).
+
+This problem has two parts. It is not computationally complicated. But it is conceptually tricky. First, compute the entropy of each island's bird distribution. Interpret these entropy values. Second, use each island's bird distribution to predict the other two. This means to compute the KL deivergence of each island from the others, treating each island as if it were a statistical model of the other islands. You should end upwith 6 different KL divergence values. Which island predicts the others best? Why?
+
+
+**Answer:** 
+
+Prepare data:
+
+```{r}
+b <- data.table(Island1 = c(rep(0.2, 5)), 
+                Island2 = c(0.8, 0.1, 0.05, 0.025, 0.025), 
+                Island3 = c(0.05, 0.15, 0.7, 0.05, 0.05))
+```
+
+Compute entropy for each island
+
+```{r}
+entropy <- function(x){
+          -sum(x * log(x))
+}
+
+apply(b, 2, entropy)
+
+```
+
+Island 1 has the highest entropy, as the proportion bird distributions is the same for all species, and hence harder to predict. For island 2, 80% birds are of Species A, so the lowest entropy.
+
+```{r}
+KL <- function(p,q){
+  sum(p * log(p/q))
+}
+
+# Island 1 as a predictor
+KL(b$Island2, b$Island1)
+KL(b$Island3, b$Island1)
+
+# Island 2 as a predictor
+KL(b$Island1, b$Island2)
+KL(b$Island3, b$Island2)
+
+# Island 1 as a predictor
+KL(b$Island1, b$Island3)
+KL(b$Island2, b$Island3)
+
+```
+The best island to predict the other two is Island 1. The reason is that, since Island 1 has the most entropic distribution, it will be easier for it to approximate other distributions than islands with a large imbalance in proportions, such as Island 2 and island 3, which have a high proportion of species A and C, respectively, and lower for the others. For example, if island 2 has very low proportion of species C, it will be harder for it to approximate higher proportions of species C, as it happens in island 3. The same goes for island 3 and species A, just like a model trained on a planet with little water like Mars will do a poor job trying to approximate the proportions of water on Earth.
+
+
+### 7H4
+
+Recall the marriage, age, and happiness collider bias example from Chapter 6. Run models m6.9 and m6.10 again (page 178). Compare these two models using WAIC (or PSIS, they will produce identical results). Which model is expected to make better predictions? Which model provides the correct causal inference about the influence of age on happiness? Can you explain why the answer to these two questions disagree?
+
+
+**Answer:** 
+
+Here we go again!
+
+```{r}
+h <- sim_happiness(seed = 1977, N_years = 1000)
+
+h2 <- h[ h$age > 17 ,] # Only adults
+h2$A <- (h2$age - 18) / (65 - 18) # Scale
+h2$mid <- h2$married + 1 
+
+# m6.9 Includes marriage status
+m6.9 <- quap(
+          alist(
+            happiness ~ dnorm(mu, sigma),
+            mu <- a[mid] + bA*A,
+            a[mid] ~ dnorm(0, 1),
+            bA ~ dnorm(0, 2),
+            sigma ~ dexp(1)
+          ), data = h2)
+
+precis(m6.9, depth = 2)
+```
+
+Model is pretty sure age is negatively associated with happiness.
+
+Now for the model that doesn't take marriage status into account:
+
+```{r}
+# m6.10 doesn't include marriage status
+m6.10 <- quap(
+          alist(
+            happiness ~ dnorm(mu, sigma),
+            mu <- a + bA*A,
+            a ~ dnorm(0, 1),
+            bA ~ dnorm(0, 2),
+            sigma ~ dexp(1)
+          ), data = h2)
+precis(m6.10, depth = 2)
+
+```
+
+m6.10 thinks there's no association between age and happiness. Here marriage is a collider.
+
+Let's compare both models:
+
+```{r}
+set.seed(77)
+compare(m6.9, m6.10, func = WAIC)
+```
+
+Here m6.9 (the one that conditions on a collider) is way better than m6.10, even though m6.10 correctly reflects the causal structure of the process that generated the data.
+
+This exercise shows us that a "true" model can perform worse in terms of prediction that a false model, which should be ok if we only care about prediction, but wouldn't help if we're aiming to understand causality.
+
+I think the bottomline is that we shouldn't rely on performance alone to determine which model is "correct" to understand causation, and we need to use science instead. Yay!
+
+
+### 7H5
+
+Revisit the urban fox data, `data(foxes)`, from the previous chapter's practice problems. Use WAIC or PSIS based model comparisons on five different models, each using `weight` as the outcome and containing these sets of predictor variables:
+
+1. avgfood + groupsize + area
+2. avgfood + groupsize 
+3. avgfood + area
+4. avgfood
+5. area
+
+Can you explain the relative differences in WAIC scores, using the fox DAG from the previous chapter? Be sure to pay attention to the standard error of the score differences (dSE).
+
+**Answer:** 
+

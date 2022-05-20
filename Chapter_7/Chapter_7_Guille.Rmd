@@ -338,7 +338,7 @@ Let's take a peak at the plots
 
 tr.seq <- seq(0, 40, length.out=100)
 pred_dat <- list(tax_rate = tr.seq)
-mu <- link(m.line, data = pred_dat)
+mu <- link(m.line.t, data = pred_dat)
 mu.mean <- apply(mu, 2, mean)
 mu.PI <- apply(mu, 2, PI, prob=0.89)
 sim.tre <- sim(m.line, data=pred_dat)
@@ -350,7 +350,7 @@ shade(mu.PI, tr.seq)
 
 # quad plot
 pred_dat <- list(tax_rate = tr.seq, tax_rate_s2 = tr.seq^2)
-mu <- link(m.quad, data = pred_dat)
+mu <- link(m.quad.t, data = pred_dat)
 mu.mean <- apply(mu, 2, mean)
 mu.PI <- apply(mu, 2, PI, prob=0.89)
 sim.tre <- sim(m.quad, data=pred_dat)
@@ -363,7 +363,7 @@ shade(mu.PI, tr.seq)
 
 
 pred_dat <- list(tax_rate = tr.seq, tax_rate_s2 = tr.seq^2, tax_rate_s3 = tr.seq^3)
-mu <- link(m.cub, data = pred_dat)
+mu <- link(m.cub.t, data = pred_dat)
 mu.mean <- apply(mu, 2, mean)
 mu.PI <- apply(mu, 2, PI, prob=0.89)
 sim.tre <- sim(m.cub, data=pred_dat)

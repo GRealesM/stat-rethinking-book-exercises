@@ -1,0 +1,240 @@
+---
+title: "Chapter 8. Conditional manatees"
+date: "24/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+  pdf_document: default
+---
+
+Here we'll solve the exercises for the chapter.
+
+```{r warning=FALSE, message=FALSE}
+library(rethinking)
+library(magrittr)
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(data.table)
+```
+
+## Easy
+
+### 8E1
+
+For each of the causal relationships below, name a hypothetical third variable that would lead to an interaction effect.
+
+1. Bread dough rises because of yeast
+2. Education lead to higher income
+3. Gasoline makes cars go
+
+**Answer:** 
+
+1. Heat.
+2. Job pay.
+3. Having a combustion engine.
+
+### 8E2
+
+Which of the following explanation invokes an interaction?
+
+1. Caramelizing onions requires cooking over low heat and making sure the onions do not dry out.
+2. A car will go faster when it has more cylinders or when it has a better fuel injector.
+3. Most people acquire their political beliefs from their parents, unless they get them instead from their friends.
+4. Intelligent animal species tend to be either highly social or have manipulative appendages (hands, tentacles, etc.).
+
+**Answer:** 
+
+1, 2, and 3.
+
+### 8E3
+
+For each of the explanations in **8E2**, write a linear model that expresses the stated relationship.
+
+**Answer:** 
+
+Too lazy to do all of them, but here's the one for the onions
+
+$$ Mean Caramelisation_o = \alpha + \beta_{h} H +  \beta_{C} C_o + \beta_{HC}H_oC_o$$
+Where H = Heat and C = Care to ensure they don't dry.
+
+## Medium
+
+### 8M1
+
+Recall the tulips example from the chapter. Suppose another set of treatments adjusted the temperature of the greenhouse over two levels: cold and hot. The data in the chapter were collected at the cold temperature. You find none of the plants grown under the hot temperature developed any blooms at all, regardless of the water and shade levels. Can you explain this result in terms of interactions between water, shade, and temperature?
+
+**Answer:** 
+
+Temperature seems to interact with shade and water such that, when temperature is over a certain degree, it cancels any effect of water and shade on blooming.
+
+### 8M2
+
+Can you invent a regression equation that would make the bloom size zero, whenever the temperature is hot?
+
+**Answer:** 
+
+$$\mu_i = \alpha + (\beta_{W} W_i +  \beta_{C} C_i + \beta_{WS}W_iS_i) T_i$$
+Variable T represents temperature, or "coldness". So when temperature is too hot, T = 0.
+
+
+### 8M3
+
+In parts of North America, ravens depend upon wolfes for their food. This is because ravens are carnivorous but cannot usually kill or open carcasses of prey. Wolves however can and do kill and tear open animals, and they tolerate ravens co-feeding at their kills. The species relationship is generally described as a "species interaction". Can you invent a hypothetical set of data on raven population size in which this relationship would manifest as a statistical interaction? Do you think the biological interaction could be linear? Why or why not?
+
+**Answer:** 
+
+
+### 8M4
+
+Repeat the tulips analysis, but this time use priors to constraint the effect of water to be positive and the effect of shade to be negative. Use prior predictive simulation. What do these prior assumptions mean for the interaction prior, if anything?
+
+**Answer:**
+
+## Hard
+
+###8H1
+
+Return to the `data(tulips)` example in the chapter. Now include the bed variable as a predictor in the interaction model. Don't interact bed with the other predictors; just include it as a main effect. Note that bed is categorical. So to use it properly, you will need to either construct dummy variables or rather an index variable, as explained in Chapter 5.
+
+**Answer:**
+
+```{r}
+data("tulips")
+d <- tulips
+str(d)
+
+# Standardise
+d$blooms_std <- d$blooms / max(d$blooms)
+d$water_cent <- d$water - mean(d$water)
+d$shade_cent <- d$shade - mean(d$shade)
+
+# Build model
+m8.1 <- quap(
+      alist(
+        blooms_std ~ dnorm(mu, sigma),
+        mu <- a[bed] + bw*water_cent + bs*shade_cent + bws*water_cent*shade_cent,
+        a[bed] ~ dnorm(0.5, 0.25),
+        bw ~ dnorm(0, 0.25),
+        bs ~ dnorm(0, 0.25),
+        bws ~ dnorm(0, 0.25),
+        sigma ~ dexp(1)
+      ), data = d
+)
+precis(m8.1, depth=2)
+
+# Let's make some plots
+par(mfrow=c(3,3))
+for( b in 1:3){
+for(s in -1:1){
+  idx <- which(d$shade_cent==s)
+  plot(d$water_cent[idx], d$blooms_std[idx], xlim=c(-1,1), ylim=c(0,1), xlab="Water", ylab="Blooms", pch=16, col=rangi2)
+  mu <- link(m8.1, data = data.frame(shade_cent=s, water_cent=-1:1, bed = b))
+  for (i in 1:20) lines( -1:1, mu[i,], col=col.alpha("black", 0.3))
+}
+}
+```
+
+###8H2
+
+Use WAIC to compare the model from 8H1 to a model that omits bed. What do you infer from this comparison? Can you reconcile the WAIC results with the posterior distribution of the bed coefficient?
+
+```{r}
+m8.1b <- quap(
+      alist(
+        blooms_std ~ dnorm(mu, sigma),
+        mu <- a + bw*water_cent + bs*shade_cent + bws*water_cent*shade_cent,
+        a ~ dnorm(0.5, 0.25),
+        bw ~ dnorm(0, 0.25),
+        bs ~ dnorm(0, 0.25),
+        bws ~ dnorm(0, 0.25),
+        sigma ~ dexp(1)
+      ), data = d
+)
+
+compare(m8.1, m8.1b, func=WAIC)
+```
+
+We see that the bed coefficients seem significantly different, however the model with bed (m8.1) doesn't seem to be significantly better than the model without it. This may mean that given the interaction between water and shade, the effect of bed is less important?
+
+###8H3
+
+**Skipped**
+
+###8H4
+
+The values in data(nettle) are data on language diversity in 74 nations.
+Use this data to evaluate the hypothesis that language diversity is partly a product of food security. [Rest of question in book].
+
+**Answer:**
+
+```{r}
+data("nettle")
+d <- nettle
+
+# Define variables
+d$log.lang.per.cap <- log(d$num.lang/ d$k.pop)
+d$log.area <- log(d$area)
+
+plot(d$log.area, d$log.lang.per.cap)
+# Make some models
+# Model area + mean growing season...
+m1 <- quap(
+      alist(
+        log.lang.per.cap ~ dnorm(mu, sigma),
+        mu <- a + ba*log.area + bg*mean.growing.season,
+        a ~ dnorm(0, 1),
+        ba ~ dnorm(0, 1),
+        bg ~ dnorm(0, 0.75),
+        sigma ~ dexp(1)
+      ), data = d
+)
+
+precis(m1)
+```
+
+
+Mean growing season seems to be positively associated with language diversity, while log-area seems to have a negative effect.
+
+```{r}
+# Model area + mean growing season + standard deviation...
+m2 <- quap(
+      alist(
+        log.lang.per.cap ~ dnorm(mu, sigma),
+        mu <- a + ba*log.area + bg*mean.growing.season + bs*sd.growing.season,
+        a ~ dnorm(0, 1),
+        ba ~ dnorm(0, 1),
+        bg ~ dnorm(0, 0.75),
+        bs ~ dnorm(0, 0.5),
+        sigma ~ dexp(1)
+      ), data = d
+)
+
+precis(m2)
+```
+
+sd.growing season has negative effect, but it's not significant, since the CI include zero.
+
+
+```{r}
+# Now with mean and sd interaction
+m3 <- quap(
+      alist(
+        log.lang.per.cap ~ dnorm(mu, sigma),
+        mu <- a + ba*log.area + bg*mean.growing.season + bs*sd.growing.season + bgs*mean.growing.season*sd.growing.season,
+        a ~ dnorm(0, 1),
+        ba ~ dnorm(0, 1),
+        bg ~ dnorm(0, 0.75),
+        bs ~ dnorm(0, 0.5),
+        bgs ~ dnorm(0, 0.5),
+        sigma ~ dexp(1)
+      ), data = d
+)
+
+precis(m3)
+```
+
+

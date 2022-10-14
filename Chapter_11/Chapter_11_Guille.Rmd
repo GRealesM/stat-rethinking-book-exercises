@@ -1,0 +1,442 @@
+---
+title: "Chapter 11. God spiked the integers"
+date: "08/08/2022"
+output:
+  html_document:
+  toc: true
+toc_float: true
+df_print: paged
+pdf_document: default
+---
+  
+Here we'll solve the exercises for the chapter.
+
+```{r warning=FALSE, message=FALSE}
+library(rethinking)
+library(magrittr)
+library(data.table)
+```
+
+
+## Easy
+
+
+### 11E1. 
+
+If an event has probability 0.35, what are the log-odds of this event?
+
+**Answer:**
+
+```{r}
+log(0.35/(1-0.35))
+```
+Log-odds ~ -0.619
+
+### 11E2. 
+
+If an event has log-odds 3.2, what is the probability of this event?
+
+**Answer:**
+
+```{r}
+exp(3.2)
+exp(3.2)/(exp(3.2)+1)
+```
+Probability ~ 0.961
+
+
+### 11E3. 
+
+Suppose that a coefficient in a logistic regression has value 1.7. What does this imply about the proportional change in odds of the outcome?
+
+**Answer:** 
+
+```{r}
+exp(1.7)/(1 + exp(1.7))
+```
+
+This implies that for each unit of change in the predictor produces a change of 0.84 in the odds of the outcome.
+
+
+### 11E4. 
+
+Why do Poisson regressions sometimes require the use of an offset? Provide an example.
+
+**Answer:** The *offset* serves to include observations in different exposure scales (ie. different rates) in the same model. For example, if we wanted to model how many book exercises Tobi does a week with how many Guille does in a year.
+
+
+## Medium
+
+### 11M1. 
+
+As explained in the chapter, binomial data can be organized in aggregated and disaggregated forms, without any impact on inference. But the likelihood of the data does change when the data are converted between the two formats. Can you explain why?
+
+**Answer:** Aggregated probabilities are larger because there are more ways to generate the data than in the disaggregated case, which we're providing (?).
+
+### 11M2. 
+
+If a coefficient in a Poisson regression has value 1.7, what does this imply about the change in the outcome?
+
+**Answer:**
+
+```{r}
+exp(1.7)
+```
+Each unit of change in the predictor will result in ~5.47 unit changes in the outcome.
+
+
+### 11M3. 
+
+Explain why the logit link is appropriate for a binomial generalized linear model.
+
+**Answer:** The logit link is appropriate for a binomial generalised model because we want to estimate the probability of some event (eg. chimps pulling left). The probability is constrained between 0 and 1, while a linear model can result any value. By applying the logit link function, we can compute the estimates in a linear scale and then transform them into a probability scale, compressed between zero and one.
+
+### 11M4. 
+
+Explain why the log link is appropriate for a Poisson generalized linear model.
+
+**Answer:** In the case of a Poisson generalised model, we want to model the number of times some event (eg. number of fishes captured) without defined upbound limits, but positive. We'll use a linear model, but we need to ensure that the parameter is positive, by making it the exponentiation of the linear model.
+
+### 11M5. 
+
+What would it imply to use a logit link for the mean of a Poisson generalized linear model? Can you think of a real research problem for which this would make sense?
+
+**Answer:** It would imply that we're modelling count data but we want to constrain our output mean to be between 0 and 1 (?). 
+
+From McElreath's solutions (I was too curious): "Remember, the premise with a Poisson likelihood is that it is really binomial, but the probability is very low and the number of trials very large. So any theoretical maximum count is never reached in the data. Using the logit link with a Poisson could make sense if you have reason to think that the influence
+of predictors on the mean diminishes eventually. That is, if you want to stop the exponential growth."
+
+### 11M6. 
+
+State the constraints for which the binomial and Poisson distributions have maximum entropy. Are the constraints different at all for binomial and Poisson? Why or why not?
+
+**Answer:** I think the question makes reference to flat priors, and how flat priors in the linear scale are not in the logit or log scale. Not sure about a general answer, though.
+
+Again, from McElreath's solutions: "The constraints that make both binomial and Poisson maximum entropy distributions are: (1)
+discrete binary outcomes, (2) constant probability of each event across trials (or constant expected  value). These two distributions have the same constraints, because the Poisson is just a simplified form of the binomial that applies when the probability of the focal event is very low and the number of trials is very large."
+
+### 11M7. 
+
+Use quap to construct a quadratic approximate posterior distribution for the chimpanzee model that includes a unique intercept for each actor, m11.4 (page 330). Compare the quadratic
+approximation to the posterior distribution produced instead from MCMC. Can you explain both the differences and the similarities between the approximate and the MCMC distributions? Relax the prior on the actor intercepts to Normal(0,10). Re-estimate the posterior using both ulam and quap.
+Do the differences increase or decrease? Why? 
+
+**Answer:**
+
+```{r}
+data("chimpanzees")
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+
+
+dat_list <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  treatment = as.integer(d$treatment))
+
+m11.4 <- ulam(
+      alist(
+      pulled_left ~ dbinom( 1 , p ) ,
+      logit(p) <- a[actor] + b[treatment] ,
+      a[actor] ~ dnorm( 0 , 1.5 ),
+      b[treatment] ~ dnorm( 0 , 0.5 )
+      ) , data=dat_list , chains=4 , log_lik=TRUE )
+precis( m11.4 , depth=2 )
+
+m11.4q <- quap(
+      alist(
+      pulled_left ~ dbinom( 1 , p ) ,
+      logit(p) <- a[actor] + b[treatment] ,
+      a[actor] ~ dnorm( 0 , 1.5 ),
+      b[treatment] ~ dnorm( 0 , 0.5 )
+      ) , data=dat_list)
+precis( m11.4q , depth=2 )
+
+```
+
+In the first comparison, posterior means seem to be mostly similar.
+
+Let's see what happens if we relax the prior on the actor intercepts:
+
+```{r}
+m11.4b <- ulam(
+      alist(
+      pulled_left ~ dbinom( 1 , p ) ,
+      logit(p) <- a[actor] + b[treatment] ,
+      a[actor] ~ dnorm( 0 , 10 ),
+      b[treatment] ~ dnorm( 0 , 0.5 )
+      ) , data=dat_list , chains=4 , log_lik=TRUE )
+precis( m11.4b , depth=2 )
+
+m11.4qb <- quap(
+      alist(
+      pulled_left ~ dbinom( 1 , p ) ,
+      logit(p) <- a[actor] + b[treatment] ,
+      a[actor] ~ dnorm( 0 , 10 ),
+      b[treatment] ~ dnorm( 0 , 0.5 )
+      ) , data=dat_list)
+precis( m11.4qb , depth=2 )
+```
+
+The differences seem to be small as well for all actors but for subject 2. Subject 2 never pulled the right level in any trial or treatment. In general, we can say that the prior and the modelling options doesn't matter much except for cases like subject 2, where we don't have enough variation in the data to override the choices.
+
+
+### 11M8. 
+
+Revisit the data(Kline) islands example. This time drop Hawaii from the sample and refit the models. What changes do you observe?
+
+**Answer:**
+
+```{r}
+data(Kline)
+d <- Kline
+d <- d[ d$culture != "Hawaii",] # Remove Hawaii outlier
+d$P <- scale( log(d$population) )
+d$contact_id <- ifelse( d$contact=="high" , 2 , 1 )
+
+dat <- list(
+T = d$total_tools ,
+P = d$P ,
+cid = d$contact_id )
+
+
+# intercept only
+m11.9 <- ulam(
+        alist(
+            T ~ dpois( lambda ),
+            log(lambda) <- a,
+            a ~ dnorm( 3 , 0.5 )
+        ), data=dat , chains=4 , log_lik=TRUE )
+
+# interaction model
+m11.10 <- ulam(
+          alist(
+              T ~ dpois( lambda ),
+              log(lambda) <- a[cid] + b[cid]*P,
+              a[cid] ~ dnorm( 3 , 0.5 ),
+              b[cid] ~ dnorm( 0 , 0.2 )
+          ), data=dat , chains=4 , log_lik=TRUE )
+
+compare( m11.9 , m11.10 , func=PSIS )
+```
+
+We still get the pareto warning! Interestingly enough, now the model with more parameters (m11.10) has indeed more "effective parameters", so we don't see the same effect after Hawaii is removed.
+
+Let's plot some stuff to improve our understanding.
+
+```{r}
+k <- PSIS( m11.10 , pointwise=TRUE )$k
+
+plot( dat$P , dat$T , xlab="log population (std)" , ylab="total tools" , col=rangi2 , pch=ifelse( dat$cid==1 , 1 , 16 ) , lwd=2 , ylim=c(0,75) , cex=1+normalize(k) )
+# set up the horizontal axis values to compute predictions at
+ns <- 100
+P_seq <- seq( from=-1.8 , to=1.4 , length.out=ns ) # Needed to adjust this a bit now we don't have Hawaii.
+# predictions for cid=1 (low contact)
+lambda <- link( m11.10 , data=data.frame( P=P_seq , cid=1 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( P_seq , lmu , lty=2 , lwd=1.5 )
+shade( lci , P_seq , xpd=TRUE )
+# predictions for cid=2 (high contact)
+lambda <- link( m11.10 , data=data.frame( P=P_seq , cid=2 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( P_seq , lmu , lty=1 , lwd=1.5 )
+shade( lci , P_seq , xpd=TRUE )
+```
+
+Now the model does not predict the lines to cross. Such was the effect of the outlier!
+
+```{r}
+
+plot( d$population , d$total_tools , xlab="population" , ylab="total tools" ,
+col=rangi2 , pch=ifelse( dat$cid==1 , 1 , 16 ) , lwd=2 ,
+ylim=c(0,75) , cex=1+normalize(k) )
+ns <- 100
+P_seq <- seq( from=-5 , to=3 , length.out=ns )
+# 1.53 is sd of log(population)
+# 9 is mean of log(population)
+pop_seq <- exp( P_seq*1.53 + 9 )
+lambda <- link( m11.10 , data=data.frame( P=P_seq , cid=1 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+
+lines( pop_seq , lmu , lty=2 , lwd=1.5 )
+shade( lci , pop_seq , xpd=TRUE )
+lambda <- link( m11.10 , data=data.frame( P=P_seq , cid=2 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( pop_seq , lmu , lty=1 , lwd=1.5 )
+shade( lci , pop_seq , xpd=TRUE )
+```
+
+Same thing.
+
+
+
+```
+
+
+
+
+```
+
+
+
+## Hard
+
+### 11H1. 
+
+Use WAIC or PSIS to compare the chimpanzee model that includes a unique intercept for each actor, m11.4 (page 330), to the simpler models fit in the same section. Interpret the results.
+
+**Answer:**
+
+
+```{r}
+data("chimpanzees")
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+
+
+dat_list <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  treatment = as.integer(d$treatment))
+
+m11.4 <- ulam(
+        alist(
+              pulled_left ~ dbinom( 1 , p ) ,
+              logit(p) <- a[actor] + b[treatment] ,
+              a[actor] ~ dnorm( 0 , 1.5 ),
+              b[treatment] ~ dnorm( 0 , 0.5 )
+        ) , data=dat_list , chains=4 , log_lik=TRUE )
+precis( m11.4 , depth=2 )
+
+m11.3 <- ulam(
+        alist(
+            pulled_left ~ dbinom( 1 , p ) ,
+            logit(p) <- a + b[treatment] ,
+            a ~ dnorm( 0 , 1.5 ),
+            b[treatment] ~ dnorm( 0 , 0.5 )
+) , data=dat_list, chains = 4, log_lik=TRUE )
+
+m11.1 <- ulam(
+        alist(
+          pulled_left ~ dbinom( 1 , p ) ,
+          logit(p) <- a ,
+          a ~ dnorm( 0 , 10 )
+) , data=dat_list , chains = 4, log_lik=TRUE)
+
+compare( m11.1, m11.3 , m11.4 , func=PSIS )
+compare( m11.1, m11.3 , m11.4 , func=WAIC )
+```
+
+Nothing much to be said. The simpler models perform considerably worse than te one that includes one intercept per actor. This may be due to the individual differences across actors evidenced during the chapter, which variability we must take into account.
+
+
+
+### 11H2. 
+The data contained in library(MASS);data(eagles) are records of salmon pirating attempts by Bald Eagles in Washington State. See ?eagles for details. While one eagle feeds, sometimes another will swoop in and try to steal the salmon from it. Call the feeding eagle the “victim” and the thief the “pirate.” Use the available data to build a binomial GLM of successful pirating attempts. 
+(a) Consider the following model:
+
+$$y_i \sim Binomial(n_i, p_i) \\
+logit(p_i) = \alpha + \beta_P P_i + \beta_V V_i + \beta_A A_i \\
+\alpha \sim Normal(0, 1.5) \\
+\beta_P,\beta_V,\beta_A \sim Normal(0, 0.5)$$
+
+where y is the number of successful attempts, n is the total number of attempts, P is a dummy variable indicating whether or not the pirate had large body size, V is a dummy variable indicating whether or not the victim had large body size, and finally A is a dummy variable indicating whether or not the pirate was an adult. Fit the model above to the eagles data, using both quap and ulam. Is the quadratic approximation okay?
+
+(b) Now interpret the estimates. If the quadratic approximation turned out okay, then it’s okay to use the quap estimates. Otherwise stick to ulam estimates. Then plot the posterior predictions. Compute and display both (1) the predicted probability of success and its 89% interval for each row (i) in the data, as well as (2) the predicted success count and its 89% interval. What different information does each type of posterior prediction provide?
+
+(c) Now try to improve the model. Consider an interaction between the pirate’s size and age (immature or adult). Compare this model to the previous one, using WAIC. Interpret.
+
+**Answer:**
+
+```{r}
+library(MASS)
+data(eagles)
+e <- eagles
+e_list <- list(
+  y = e$y,
+  n = e$n,
+  P = ifelse(e$P == "L", 1,0), # 0 for Small, 1 for Large 
+  A = ifelse(e$A == "A", 1,0), # 0 for immature, 1 for adult
+  V = ifelse(e$V == "L", 1,0) # 0 for Small, 1 for Large 
+)
+
+m11h2q <- quap(
+          alist(
+            y ~ dbinom(n, p),
+            logit(p) <- a + bP * P + bA * A + bV * V ,
+            a ~ dnorm(0, 1.5),
+            bP ~ dnorm(0, 0.5),
+            bA ~ dnorm(0, 0.5),
+            bV ~ dnorm(0, 0.5)
+          ), data = e_list)
+precis(m11h2q, depth = 2)
+
+m11h2u <- ulam(
+          alist(
+            y ~ dbinom(n, p),
+            logit(p) <- a + bP * P + bA * A + bV * V ,
+            a ~ dnorm(0, 1.5),
+            bP ~ dnorm(0, 0.5),
+            bA ~ dnorm(0, 0.5),
+            bV ~ dnorm(0, 0.5)
+          ), data = e_list, chains = 4, log_lik = TRUE)
+precis(m11h2u, depth = 2)
+
+
+
+```
+
+(a) Quadratic approximation and Ulam seem to get similar results. The main difference between quap and ulam in general is that the MCMC posteriors don't need to be strictly Gaussian, and can have wider skews. If we changed the priors to wider ones, we'd see larger differences.
+
+(b) The size of the eagles have the largest effect, but it differs between the Pirate (P), and the victim (V). P being large has a positive effect on successful attempts, while the victim being large has the opposite effect.
+Let's sample from the posterior.
+
+```{r}
+post <- extract.samples(m11h2q)
+mean(logistic(post$a))
+```
+So ~57% of immature, small pirates are successful when preying on small victims.
+
+```{r}
+mean(logistic(post$a + post$bP))
+```
+
+
+F
+
+
+
+
+### 11H3. 
+
+The data contained in data(salamanders) are counts of salamanders (Plethodon elongatus) from 47 different 49-m2 plots in northern California.181 The column SALAMAN is the count in each plot, and the columns PCTCOVER and FORESTAGE are percent of ground cover and age of trees in the plot, respectively. You will model SALAMAN as a Poisson variable.
+(a) Model the relationship between density and percent cover, using a log-link (same as the example in the book and lecture). Use weakly informative priors of your choosing. Check the quadratic approximation again, by comparing quap to ulam. Then plot the expected counts and their 89% interval against percent cover. In which ways does the model do a good job? A bad job?
+
+(b) Can you improve the model by using the other predictor, FORESTAGE? Try any models you think useful. Can you explain why FORESTAGE helps or does not help with prediction?
+11H4. The data in data(NWOGrants) are outcomes for scientific funding applications for the Netherlands Organization for Scientific Research (NWO) from 2010–2012 (see van der Lee and Ellemers (2015) for data and context). These data have a very similar structure to the UCBAdmit data discussed in the chapter. I want you to consider a similar question: What are the total and indirect causal effects of gender on grant awards? Consider a mediation path (a pipe) through discipline. Draw the corresponding DAG and then use one or more binomial GLMs to answer the question. What is your causal interpretation? If NWO’s goal is to equalize rates of funding between men and women, what type of intervention would be most effective?
+
+**Answer:**
+
+### 11H5. 
+
+Suppose that the NWO Grants sample has an unobserved confound that influences both choice of discipline and the probability of an award. One example of such a confound could be the
+career stage of each applicant. Suppose that in some disciplines, junior scholars apply for most of the grants. In other disciplines, scholars from all career stages compete. As a result, career stage influences discipline as well as the probability of being awarded a grant. Add these influences to your DAG from the previous problem. What happens now when you condition on discipline? Does it provide an un-confounded estimate of the direct path from gender to an award? Why or why not? Justify your answer with the backdoor criterion. If you have trouble thinking this though, try simulating fake data, assuming your DAG is true. Then analyze it using the model from the previous problem. What do you conclude? Is it possible for gender to have a real direct causal influence but for a regression conditioning on both gender and discipline to suggest zero influence?
+
+**Answer:**
+
+### 11H6. 
+The data in data(Primates301) are 301 primate species and associated measures. In this problem, you will consider how brain size is associated with social learning. There are three parts.
+
+(a) Model the number of observations of social_learning for each species as a function of the log brain size. Use a Poisson distribution for the social_learning outcome variable. Interpret the resulting posterior. 
+
+(b) Some species are studied much more than others. So the number of reported instances of social_learning could be a product of research effort. Use the research_effort variable, specifically its logarithm, as an additional predictor variable. Interpret the coefficient for log research_effort. How does this model differ from the previous one? 
+
+(c) Draw a DAG to represent how you think the variables social_learning, brain, and research_effort interact. Justify the DAG with the measured associations in the two models above (and any other models you used).
+
+**Answer:**
+
+
